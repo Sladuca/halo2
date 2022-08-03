@@ -26,7 +26,7 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
     struct MyCircuit {}
 
     impl Circuit<pallas::Base> for MyCircuit {
-        type Config = Table16Config;
+        type Config = Vec<Table16Config>;
         type FloorPlanner = SimpleFloorPlanner;
 
         fn without_witnesses(&self) -> Self {
@@ -34,7 +34,7 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
         }
 
         fn configure(meta: &mut ConstraintSystem<pallas::Base>) -> Self::Config {
-            Table16Chip::configure(meta)
+            (0..16).map(|_| Table16Chip::configure(meta)).collect::<Vec<_>>()
         }
 
         fn synthesize(
@@ -42,36 +42,40 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
             config: Self::Config,
             mut layouter: impl Layouter<pallas::Base>,
         ) -> Result<(), Error> {
-            Table16Chip::load(config.clone(), &mut layouter)?;
-            let table16_chip = Table16Chip::construct(config);
-
-            // Test vector: "abc"
-            let test_input = [
-                BlockWord(Value::known(0b01100001011000100110001110000000)),
-                BlockWord(Value::known(0b00000000000000000000000000000000)),
-                BlockWord(Value::known(0b00000000000000000000000000000000)),
-                BlockWord(Value::known(0b00000000000000000000000000000000)),
-                BlockWord(Value::known(0b00000000000000000000000000000000)),
-                BlockWord(Value::known(0b00000000000000000000000000000000)),
-                BlockWord(Value::known(0b00000000000000000000000000000000)),
-                BlockWord(Value::known(0b00000000000000000000000000000000)),
-                BlockWord(Value::known(0b00000000000000000000000000000000)),
-                BlockWord(Value::known(0b00000000000000000000000000000000)),
-                BlockWord(Value::known(0b00000000000000000000000000000000)),
-                BlockWord(Value::known(0b00000000000000000000000000000000)),
-                BlockWord(Value::known(0b00000000000000000000000000000000)),
-                BlockWord(Value::known(0b00000000000000000000000000000000)),
-                BlockWord(Value::known(0b00000000000000000000000000000000)),
-                BlockWord(Value::known(0b00000000000000000000000000011000)),
-            ];
-
-            // Create a message of length 31 blocks
-            let mut input = Vec::with_capacity(31 * BLOCK_SIZE);
-            for _ in 0..31 {
-                input.extend_from_slice(&test_input);
+            // load 16 instances of the "table16" chip into the circuit
+            for chip_config in config {
+                Table16Chip::load(chip_config.clone(), &mut layouter)?;
+                let table16_chip = Table16Chip::construct(chip_config);
+    
+                // Test vector: "abc"
+                let test_input = [
+                    BlockWord(Value::known(0b01100001011000100110001110000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000000000)),
+                    BlockWord(Value::known(0b00000000000000000000000000011000)),
+                ];
+    
+                // Create a message of length 31 blocks
+                let mut input = Vec::with_capacity(31 * BLOCK_SIZE);
+                for _ in 0..31 {
+                    input.extend_from_slice(&test_input);
+                }
+    
+    
+                Sha256::digest(table16_chip, layouter.namespace(|| "'abc' * 2"), &input)?;
             }
-
-            Sha256::digest(table16_chip, layouter.namespace(|| "'abc' * 2"), &input)?;
 
             Ok(())
         }
@@ -143,7 +147,7 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
 
 #[allow(dead_code)]
 fn criterion_benchmark(c: &mut Criterion) {
-    bench("sha256", 17, c);
+    bench("sha256", 21, c);
     // bench("sha256", 20, c);
 }
 
