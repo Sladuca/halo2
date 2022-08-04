@@ -18,7 +18,7 @@ use std::{
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use halo2_gadgets::sha256::{BlockWord, Sha256, Table16Chip, Table16Config, BLOCK_SIZE};
+use halo2_gadgets::sha256::{BlockWord, Table16Chip, Table16Config, Sha256Instructions};
 
 #[allow(dead_code)]
 fn bench(name: &str, k: u32, c: &mut Criterion) {
@@ -43,12 +43,12 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
             mut layouter: impl Layouter<pallas::Base>,
         ) -> Result<(), Error> {
             // load 16 instances of the "table16" chip into the circuit
-            for chip_config in config {
+            for (i, chip_config) in config.into_iter().enumerate() {
                 Table16Chip::load(chip_config.clone(), &mut layouter)?;
                 let table16_chip = Table16Chip::construct(chip_config);
     
                 // Test vector: "abc"
-                let test_input = [
+                let block = [
                     BlockWord(Value::known(0b01100001011000100110001110000000)),
                     BlockWord(Value::known(0b00000000000000000000000000000000)),
                     BlockWord(Value::known(0b00000000000000000000000000000000)),
@@ -66,15 +66,8 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
                     BlockWord(Value::known(0b00000000000000000000000000000000)),
                     BlockWord(Value::known(0b00000000000000000000000000011000)),
                 ];
-    
-                // Create a message of length 31 blocks
-                let mut input = Vec::with_capacity(31 * BLOCK_SIZE);
-                for _ in 0..31 {
-                    input.extend_from_slice(&test_input);
-                }
-    
-    
-                Sha256::digest(table16_chip, layouter.namespace(|| "'abc' * 2"), &input)?;
+                let state = table16_chip.initialization_vector(&mut layouter)?;
+                table16_chip.compress(&mut layouter.namespace(|| format!("compression {}", i)), &state, block)?;
             }
 
             Ok(())
@@ -113,14 +106,14 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
     let verifier_name = name.to_string() + "-verifier";
 
     // Benchmark proof creation
-    group.bench_function(&prover_name, |b| {
-        b.iter(|| {
-            let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
-            create_proof(&params, &pk, &[circuit], &[], OsRng, &mut transcript)
-                .expect("proof generation should not fail");
-            let proof: Vec<u8> = transcript.finalize();
-        });
-    });
+    // group.bench_function(&prover_name, |b| {
+    //     b.iter(|| {
+    //         let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
+    //         create_proof(&params, &pk, &[circuit], &[], OsRng, &mut transcript)
+    //             .expect("proof generation should not fail");
+    //         let _proof: Vec<u8> = transcript.finalize();
+    //     });
+    // });
 
     // Create a proof
     let proof_path = Path::new("./benches/sha256_assets/sha256_proof");
