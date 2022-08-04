@@ -26,7 +26,7 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
     struct MyCircuit;
 
     impl Circuit<pallas::Base> for MyCircuit {
-        type Config = Vec<Table16Config>;
+        type Config = Table16Config;
         type FloorPlanner = SimpleFloorPlanner;
 
         fn without_witnesses(&self) -> Self {
@@ -34,7 +34,7 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
         }
 
         fn configure(meta: &mut ConstraintSystem<pallas::Base>) -> Self::Config {
-            (0..15).map(|_| Table16Chip::configure(meta)).collect::<Vec<_>>()
+            Table16Chip::configure(meta)
         }
 
         fn synthesize(
@@ -42,14 +42,13 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
             config: Self::Config,
             mut layouter: impl Layouter<pallas::Base>,
         ) -> Result<(), Error> {
-            // load 16 instances of the "table16" chip into the circuit
-            for (i, chip_config) in config.into_iter().enumerate() {
-                Table16Chip::load(chip_config.clone(), &mut layouter)?;
-                let table16_chip = Table16Chip::construct(chip_config);
-    
-                // Test vector: "abc"
+            Table16Chip::load(config.clone(), &mut layouter)?;
+            let table16_chip = Table16Chip::construct(config);
+
+            // do 16 compressions
+            for i in 0..15 {
                 let block = [
-                    BlockWord(Value::known(0b01100001011000100110001110000000)),
+                    BlockWord(Value::known(i)),
                     BlockWord(Value::known(0b00000000000000000000000000000000)),
                     BlockWord(Value::known(0b00000000000000000000000000000000)),
                     BlockWord(Value::known(0b00000000000000000000000000000000)),
@@ -64,7 +63,7 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
                     BlockWord(Value::known(0b00000000000000000000000000000000)),
                     BlockWord(Value::known(0b00000000000000000000000000000000)),
                     BlockWord(Value::known(0b00000000000000000000000000000000)),
-                    BlockWord(Value::known(0b00000000000000000000000000011000)),
+                    BlockWord(Value::known(i + 15)),
                 ];
                 let state = table16_chip.initialization_vector(&mut layouter)?;
                 table16_chip.compress(&mut layouter.namespace(|| format!("compression {}", i)), &state, block)?;
