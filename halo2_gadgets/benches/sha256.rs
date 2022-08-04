@@ -11,7 +11,7 @@ use halo2_proofs::{
 use rand::rngs::OsRng;
 
 use std::{
-    fs::File,
+    fs::{create_dir, File},
     io::{prelude::*, BufReader},
     path::Path,
 };
@@ -84,6 +84,8 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
         let mut buf = Vec::new();
 
         params.write(&mut buf).expect("Failed to write params");
+
+        create_dir("./benches/sha256_assets").unwrap_or_else(|_| println!("Params dir already exists"));
         let mut file = File::create(&params_path).expect("Failed to create sha256_params");
 
         file.write_all(&buf[..])
@@ -106,14 +108,14 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
     let verifier_name = name.to_string() + "-verifier";
 
     // Benchmark proof creation
-    // group.bench_function(&prover_name, |b| {
-    //     b.iter(|| {
-    //         let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
-    //         create_proof(&params, &pk, &[circuit], &[], OsRng, &mut transcript)
-    //             .expect("proof generation should not fail");
-    //         let _proof: Vec<u8> = transcript.finalize();
-    //     });
-    // });
+    group.bench_function(&prover_name, |b| {
+        b.iter(|| {
+            let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
+            create_proof(&params, &pk, &[circuit], &[], OsRng, &mut transcript)
+                .expect("proof generation should not fail");
+            let _proof: Vec<u8> = transcript.finalize();
+        });
+    });
 
     // Create a proof
     let proof_path = Path::new("./benches/sha256_assets/sha256_proof");
