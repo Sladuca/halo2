@@ -22,8 +22,8 @@ use halo2_gadgets::sha256::{BlockWord, Sha256, Table16Chip, Table16Config, BLOCK
 
 #[allow(dead_code)]
 fn bench(name: &str, k: u32, c: &mut Criterion) {
-    #[derive(Default)]
-    struct MyCircuit {}
+    #[derive(Default, Copy, Clone)]
+    struct MyCircuit;
 
     impl Circuit<pallas::Base> for MyCircuit {
         type Config = Vec<Table16Config>;
@@ -34,7 +34,7 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
         }
 
         fn configure(meta: &mut ConstraintSystem<pallas::Base>) -> Self::Config {
-            (0..16).map(|_| Table16Chip::configure(meta)).collect::<Vec<_>>()
+            (0..15).map(|_| Table16Chip::configure(meta)).collect::<Vec<_>>()
         }
 
         fn synthesize(
@@ -81,6 +81,9 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
         }
     }
 
+    let mut group = c.benchmark_group("sha256");
+    group.sample_size(10);
+
     // Initialize the polynomial commitment parameters
     let params_path = Path::new("./benches/sha256_assets/sha256_params");
     if File::open(&params_path).is_err() {
@@ -98,26 +101,26 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
     let params: Params<EqAffine> =
         Params::read::<_>(&mut BufReader::new(params_fs)).expect("Failed to read params");
 
-    let empty_circuit: MyCircuit = MyCircuit {};
+    let empty_circuit: MyCircuit = MyCircuit;
 
     // Initialize the proving key
     let vk = keygen_vk(&params, &empty_circuit).expect("keygen_vk should not fail");
     let pk = keygen_pk(&params, vk, &empty_circuit).expect("keygen_pk should not fail");
 
-    let circuit: MyCircuit = MyCircuit {};
+    let circuit: MyCircuit = MyCircuit;
 
-    // let prover_name = name.to_string() + "-prover";
+    let prover_name = name.to_string() + "-prover";
     let verifier_name = name.to_string() + "-verifier";
 
-    // /// Benchmark proof creation
-    // c.bench_function(&prover_name, |b| {
-    //     b.iter(|| {
-    //         let mut transcript = Blake2bWrite::init(Fq::one());
-    //         create_proof(&params, &pk, &circuit, &[], &mut transcript)
-    //             .expect("proof generation should not fail");
-    //         let proof: Vec<u8> = transcript.finalize();
-    //     });
-    // });
+    // Benchmark proof creation
+    group.bench_function(&prover_name, |b| {
+        b.iter(|| {
+            let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
+            create_proof(&params, &pk, &[circuit], &[], OsRng, &mut transcript)
+                .expect("proof generation should not fail");
+            let proof: Vec<u8> = transcript.finalize();
+        });
+    });
 
     // Create a proof
     let proof_path = Path::new("./benches/sha256_assets/sha256_proof");
@@ -136,18 +139,20 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
         .read_to_end(&mut proof)
         .expect("Couldn't read proof");
 
-    c.bench_function(&verifier_name, |b| {
+    group.bench_function(&verifier_name, |b| {
         b.iter(|| {
             let strategy = SingleVerifier::new(&params);
             let mut transcript = Blake2bRead::<_, _, Challenge255<_>>::init(&proof[..]);
             assert!(verify_proof(&params, pk.get_vk(), strategy, &[], &mut transcript).is_ok());
         });
     });
+
+    group.finish();
 }
 
 #[allow(dead_code)]
 fn criterion_benchmark(c: &mut Criterion) {
-    bench("sha256", 21, c);
+    bench("sha256", 17, c);
     // bench("sha256", 20, c);
 }
 
